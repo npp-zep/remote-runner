@@ -1,0 +1,15 @@
+[remote]
+host = "u0_a274@localhost"
+port = 8022
+# workdir = "~/tmp/remote-build/myproj"
+
+[sync]
+exclude = [".git", "node_modules", "__pycache__", "*.log"]
+executables = ["*.sh", "scripts/*.sh", "configure"]
+
+[build]
+command = "ls -la"
+artifacts = ["build/"]
+
+[local]
+log_dir = "~/.remote-build-logs"

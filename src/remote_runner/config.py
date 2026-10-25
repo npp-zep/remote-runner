@@ -15,6 +15,7 @@ class Config:
     exclude: list[str] = field(default_factory=lambda: DEFAULT_EXCLUDE.copy())
     artifacts: list[str] = field(default_factory=list)
     log_dir: str = "~/.remote-build-logs"
+    executables: list[str] = field(default_factory=list)
 
 
 def load_config(path: str | Path) -> Config:
@@ -23,14 +24,16 @@ def load_config(path: str | Path) -> Config:
     try:
         remote = raw["remote"]
         build_section = raw.get("build", {})
+        sync_section = raw.get("sync", {})
         return Config(
             host=remote["host"],
             workdir=remote.get("workdir", "~/tmp/remote-build"),
             build_command=build_section.get("command", ""),
             port=int(remote.get("port", 22)),
-            exclude=raw.get("sync", {}).get("exclude", DEFAULT_EXCLUDE.copy()),
+            exclude=sync_section.get("exclude", DEFAULT_EXCLUDE.copy()),
             artifacts=build_section.get("artifacts", []),
             log_dir=raw.get("local", {}).get("log_dir", "~/.remote-build-logs"),
+            executables=sync_section.get("executables", []),
         )
     except KeyError as e:
         raise ValueError(f"配置缺少必填字段: {e}") from e

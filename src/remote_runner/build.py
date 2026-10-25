@@ -12,6 +12,16 @@ class BuildError(Exception):
         self.log_file = log_file
 
 
+def _ssh_cmd(host: str, port: int, remote_cmd: str, tty: bool) -> list[str]:
+    cmd = ["ssh"]
+    if tty:
+        cmd.append("-t")
+    if port != 22:
+        cmd += ["-p", str(port)]
+    cmd += [host, remote_cmd]
+    return cmd
+
+
 def run_remote(
     host: str,
     remote_dir: str,
@@ -19,12 +29,21 @@ def run_remote(
     log_file: Path,
     port: int = 22,
     stream: bool = True,
+    interactive: bool = False,
 ) -> None:
     log_file.parent.mkdir(parents=True, exist_ok=True)
-    cmd = ["ssh"]
-    if port != 22:
-        cmd += ["-p", str(port)]
-    cmd += [host, f"cd {shlex.quote(remote_dir)} && {command}"]
+    remote_cmd = f"cd {shlex.quote(remote_dir)} && {command}"
+    cmd = _ssh_cmd(host, port, remote_cmd, tty=interactive)
+
+    if interactive:
+        # 继承终端，不捕获，不写日志（pty 控制字符会污染日志）
+        try:
+            rc = subprocess.call(cmd)
+        except FileNotFoundError:
+            raise BuildError(-1, log_file)
+        if rc != 0:
+            raise BuildError(rc, log_file)
+        return
 
     try:
         proc = subprocess.Popen(

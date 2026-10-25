@@ -1,4 +1,5 @@
 # src/remote_runner/sync.py
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -24,7 +25,6 @@ def _run_ssh(host: str, port: int, remote_cmd: str) -> subprocess.CompletedProce
 
 
 def resolve_remote_home(host: str, port: int = 22) -> str:
-    """拿远端 HOME 的绝对路径。"""
     r = _run_ssh(host, port, 'printf %s "$HOME"')
     if r.returncode != 0 or not r.stdout.strip():
         raise SyncError(r.stderr.strip() or "无法获取远端 HOME")
@@ -32,7 +32,6 @@ def resolve_remote_home(host: str, port: int = 22) -> str:
 
 
 def expand_remote_path(host: str, path: str, port: int = 22) -> str:
-    """把开头的 ~ 展开成远端 HOME 绝对路径。"""
     if path == "~":
         return resolve_remote_home(host, port)
     if path.startswith("~/"):
@@ -41,7 +40,6 @@ def expand_remote_path(host: str, path: str, port: int = 22) -> str:
 
 
 def ensure_remote_dir(host: str, remote_dir: str, port: int = 22) -> None:
-    """确保远端目录存在（递归创建）。传入的应是绝对路径。"""
     r = _run_ssh(host, port, f'mkdir -p "{remote_dir}"')
     if r.returncode != 0:
         raise SyncError(r.stderr.strip() or f"创建远端目录失败: {remote_dir}")
@@ -79,8 +77,31 @@ def atomic_swap(
 
 
 def cleanup_remote(host: str, path: str, port: int = 22) -> None:
-    """尽力删除远端临时目录，失败不抛异常。"""
     _run_ssh(host, port, f'rm -rf "{path}"')
+
+
+def _quote_pattern(p: str) -> str:
+    """通配符模式不加引号，让远端 shell 展开；普通路径用 shlex.quote。"""
+    if any(ch in p for ch in "*?["):
+        return p
+    return shlex.quote(p)
+
+
+def chmod_executables(
+    host: str, remote_dir: str, patterns: list[str], port: int = 22
+) -> None:
+    """在远端 workdir 里给匹配的文件加执行权限。未匹配到文件时不报错。"""
+    if not patterns:
+        return
+    quoted = " ".join(_quote_pattern(p) for p in patterns)
+    script = (
+        f"cd {shlex.quote(remote_dir)} && "
+        f"(chmod +x {quoted} 2>/dev/null || true)"
+    )
+    r = _run_ssh(host, port, script)
+    # 2>/dev/null || true 让 chmod 失败不暴露，但 cd 失败仍会返回非零
+    if r.returncode != 0:
+        raise SyncError(r.stderr.strip() or f"chmod +x 失败（退出码 {r.returncode}）")
 
 
 def fetch_artifacts(

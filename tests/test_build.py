@@ -106,3 +106,54 @@ def test_run_remote_creates_log_dir(tmp_path):
         run_remote("h", "/w", "true", log)
     assert log.parent.exists()
     assert log.exists()
+
+
+def test_run_remote_interactive_uses_tty_and_call(tmp_path):
+    log = tmp_path / "b.log"
+    with patch(
+        "remote_runner.build.subprocess.call",
+        return_value=0,
+    ) as p:
+        run_remote("user@host", "/tmp/rb", "./luaj.sh", log, interactive=True)
+    args = p.call_args[0][0]
+    assert args[0] == "ssh"
+    assert args[1] == "-t"
+    assert args[2] == "user@host"
+    assert args[3] == "cd /tmp/rb && ./luaj.sh"
+
+
+def test_run_remote_interactive_does_not_write_log(tmp_path):
+    log = tmp_path / "b.log"
+    with patch("remote_runner.build.subprocess.call", return_value=0):
+        run_remote("h", "/w", "./repl", log, interactive=True)
+    # 交互模式不写日志（pty 控制字符会污染）
+    assert not log.exists()
+
+
+def test_run_remote_interactive_failure_raises(tmp_path):
+    log = tmp_path / "b.log"
+    with patch("remote_runner.build.subprocess.call", return_value=1):
+        with pytest.raises(BuildError) as exc:
+            run_remote("h", "/w", "./repl", log, interactive=True)
+    assert exc.value.returncode == 1
+
+
+def test_run_remote_interactive_missing_ssh_raises(tmp_path):
+    log = tmp_path / "b.log"
+    with patch(
+        "remote_runner.build.subprocess.call",
+        side_effect=FileNotFoundError,
+    ):
+        with pytest.raises(BuildError):
+            run_remote("h", "/w", "./repl", log, interactive=True)
+
+
+def test_run_remote_interactive_with_port(tmp_path):
+    log = tmp_path / "b.log"
+    with patch(
+        "remote_runner.build.subprocess.call",
+        return_value=0,
+    ) as p:
+        run_remote("user@host", "/tmp/rb", "./repl", log, port=2222, interactive=True)
+    args = p.call_args[0][0]
+    assert args[:5] == ["ssh", "-t", "-p", "2222", "user@host"]

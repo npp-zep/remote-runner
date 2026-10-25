@@ -98,3 +98,23 @@ command = "true"
 def test_port_defaults_to_22(tmp_path):
     cfg = load_config(write_toml(tmp_path, VALID))
     assert cfg.port == 22
+
+
+def test_executables_parsed(tmp_path):
+    content = """
+[remote]
+host = "h"
+
+[build]
+command = "true"
+
+[sync]
+executables = ["*.sh", "scripts/*.sh"]
+"""
+    cfg = load_config(write_toml(tmp_path, content))
+    assert cfg.executables == ["*.sh", "scripts/*.sh"]
+
+
+def test_executables_default_empty(tmp_path):
+    cfg = load_config(write_toml(tmp_path, VALID))
+    assert cfg.executables == []

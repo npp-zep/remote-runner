@@ -7,6 +7,7 @@ import pytest
 from remote_runner.sync import (
     rsync_to,
     atomic_swap,
+    chmod_executables,
     cleanup_remote,
     ensure_remote_dir,
     expand_remote_path,
@@ -144,6 +145,39 @@ def test_cleanup_remote_does_not_raise():
         return_value=fake_run(returncode=1, stderr="no such dir"),
     ):
         cleanup_remote("h", "/w.tmp")
+
+
+def test_chmod_executables_builds_script():
+    with patch("remote_runner.sync.subprocess.run", return_value=fake_run()) as p:
+        chmod_executables("h", "/w", ["*.sh", "bin/tool"])
+    args = p.call_args[0][0]
+    script = args[2]
+    assert "cd /w" in script
+    assert "chmod +x *.sh bin/tool" in script
+
+
+def test_chmod_executables_noop_on_empty():
+    with patch("remote_runner.sync.subprocess.run") as p:
+        chmod_executables("h", "/w", [])
+    p.assert_not_called()
+
+
+def test_chmod_executables_swallows_chmod_failure():
+    # 2>/dev/null || true 已让 chmod 失败不暴露，脚本整体返回 0 时不抛异常
+    with patch(
+        "remote_runner.sync.subprocess.run",
+        return_value=fake_run(returncode=0),
+    ):
+        chmod_executables("h", "/w", ["*.sh"])
+
+
+def test_chmod_executables_raises_on_cd_failure():
+    with patch(
+        "remote_runner.sync.subprocess.run",
+        return_value=fake_run(returncode=1, stderr="cd failed"),
+    ):
+        with pytest.raises(SyncError, match="cd failed"):
+            chmod_executables("h", "/w", ["*.sh"])
 
 
 def test_fetch_artifacts_builds_command(tmp_path):
